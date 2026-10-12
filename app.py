@@ -25,6 +25,25 @@ FONT_03 = ROOT / "fonts/Uni Ila.Sundaram-03.ttf"
 FONT_006 = ROOT / "fonts/TAM-Tamil006 Normal.ttf"
 FONT_TITLE = ROOT / "fonts/TAM-Tamil013 Normal.ttf"
 OUTPUT_DIR = ROOT / "output"
+MAX_PDF_BYTES = 600_000
+
+def compact_pdf(document: fitz.Document) -> bytes:
+    """Keep vector text; progressively compress images only when necessary."""
+    data = document.tobytes(garbage=4, deflate=True)
+    if len(data) < MAX_PDF_BYTES:
+        return data
+    document.subset_fonts()
+    original = document.tobytes(garbage=4, deflate=True, use_objstms=1)
+    if len(original) < MAX_PDF_BYTES:
+        return original
+    for dpi, quality in [(150,82),(120,72),(100,60),(85,45),(70,30),(50,18)]:
+        with fitz.open(stream=original,filetype="pdf") as candidate:
+            candidate.rewrite_images(dpi_threshold=dpi+1,dpi_target=dpi,quality=quality)
+            data = candidate.tobytes(garbage=4,deflate=True,use_objstms=1)
+            if len(data) < MAX_PDF_BYTES:
+                return data
+    raise ValueError("This article cannot fit under 600 KB while preserving its text. "
+                     "Shorten the article or use simpler photos and try again.")
 # PDF point coordinates measured against the six reference pages. Backgrounds
 # are placed in the reference media box; original PDF artwork is not repainted.
 PAGE_RECT = fitz.Rect(0, 0, 595.2000122070312, 841.9199829101562)
@@ -444,7 +463,7 @@ def generate_pdf(article: list[dict], selected: date, uploads=None, small_crop=N
             y += 8 if kind in {"heading", "subheading"} else 15.9936
         count = len(output)
         output.set_metadata({"title": title, "creator": "Local Tamil magazine generator"})
-        data = output.tobytes(garbage=4, deflate=True)
+        data = compact_pdf(output)
     path = None
     if save:
         OUTPUT_DIR.mkdir(exist_ok=True)
@@ -470,7 +489,7 @@ def blank_preview(selected: date, uploads=None, small_crop=None, photo_crops=Non
         page = add_template(document,content)
         draw_photos(page,uploads,front=False,photo_crops=photo_crops)
         draw_header(page,selected,2,body)
-        data = document.tobytes(deflate=True)
+        data = compact_pdf(document)
     return Generation(None,2,[],data,[])
 
 def main() -> None:
@@ -510,7 +529,7 @@ def main() -> None:
                     "pan_y":st.slider(f"{name} photo vertical crop",-1.0,1.0,0.0,0.05,disabled=slot not in uploads)}
     article = st.session_state.get("article",[])
     revision = st.session_state.get("article_revision","initial")
-    signature = (selected.isoformat(),repr(article),repr(photo_crops),
+    signature = ("compact-pdf-v1",MAX_PDF_BYTES,selected.isoformat(),repr(article),repr(photo_crops),
                  tuple((slot,hashlib.sha256(data).hexdigest()) for slot,data in uploads.items()))
     fingerprint = hashlib.sha256(repr(signature).encode()).hexdigest()
     if fingerprint != st.session_state.get("preview_fingerprint"):
@@ -557,6 +576,7 @@ def main() -> None:
                 st.error(f"PDF generation failed: {error}")
     if "pdf_bytes" in st.session_state:
         st.success(f'PDF generated: {st.session_state["pdf_pages"]} pages.')
+        st.caption(f'PDF size: {len(st.session_state["pdf_bytes"])/1000:.1f} KB (limit: 600 KB)')
         st.download_button("DOWNLOAD PDF", data=st.session_state["pdf_bytes"],
                            file_name=st.session_state["pdf_name"], mime="application/pdf", use_container_width=True)
 

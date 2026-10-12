@@ -40,6 +40,13 @@ upgrading an existing installation.
    download until another generation. Preview refreshes do not create files
    in `output`; explicit generation saves a uniquely named PDF there.
 
+Exports must be smaller than 600 KB (600,000 bytes). The app compresses and
+resizes embedded images as needed while preserving selectable text, page
+layout, and photo masks. The preview shows the compressed export. If an
+exceptionally large article cannot fit, the app asks you to shorten it rather
+than offering an oversized download. Update dependencies after upgrading:
+`python -m pip install -r requirements.txt`.
+
 Body paragraphs default to justified alignment inside an area centered on the
 page. Lists have hanging indentation; subheadings default to left alignment.
 Front title lines are always centered. Explicit line breaks are retained,
