@@ -620,6 +620,11 @@ def main() -> None:
             st.session_state["preview_error"] = str(error)
         st.session_state["preview_fingerprint"] = fingerprint
         st.session_state["preview_revision"] = revision
+    if fingerprint == st.session_state.get("preview_fingerprint"):
+        # Editor revisions also change for no-op formatting, undo, or edits
+        # restored to the cached content. Reuse the PDF but acknowledge the
+        # newest revision so the component does not stay pending forever.
+        st.session_state["preview_revision"] = revision
     if st.session_state.get("generated_for") != fingerprint:
         st.session_state.pop("pdf_bytes",None)
     component = components.declare_component("tamil_article", path=str(ROOT / "editor"))
