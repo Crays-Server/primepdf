@@ -30,7 +30,9 @@ upgrading an existing installation.
    files or allow dragging the template artwork.
 5. HEADING, SUBHEADING, BULLET, NUMBER, BOLD and CLEAR work in both the source
    editor and the page preview. Select a paragraph or heading, choose a size
-   (8-96 pt) and click APPLY SIZE, or choose a text color and click APPLY COLOR.
+   (8-96 pt) and click APPLY SIZE. To color a word or punctuation, select those
+   characters, choose a text color and click APPLY COLOR. With no selected
+   characters, color applies to the paragraph or heading.
    These controls also work on the preview page. CLEAR restores ordinary body
    text and removes custom size/color.
 6. Click GENERATE PDF, then DOWNLOAD PDF. Export uses the same PDF bytes as

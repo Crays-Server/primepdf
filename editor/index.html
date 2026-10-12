@@ -31,7 +31,7 @@ h3{font-size:14px;margin:8px 0}.pane{min-width:0}
 <button data-command="break">LINE BREAK</button>
 <label class="font-control">Size (pt)<input id="font-size" type="number" min="8" max="96" step="1" value="22" aria-label="Font size in points"></label><button id="apply-size">APPLY SIZE</button>
 <label class="font-control">Text color<input id="text-color" type="color" value="#000000" aria-label="Text color"></label><button id="apply-color">APPLY COLOR</button>
-<span class="help">Size/color apply to the selected paragraph or heading.</span><button id="generate">GENERATE PDF</button>
+<span class="help">Size applies to the paragraph. Color applies to selected text, or the paragraph if nothing is selected.</span><button id="generate">GENERATE PDF</button>
 </div>
 <div id="status" aria-live="polite">Preparing page preview…</div><div id="error" role="alert"></div>
 <div class="workspace"><section class="pane"><h3>Article</h3><div id="editor" contenteditable="true" role="textbox" aria-label="Article content" aria-multiline="true" spellcheck="false"></div></section>
@@ -41,14 +41,20 @@ const editor=document.getElementById('editor'),preview=document.getElementById('
 let initialized=false,request=null,revision='initial',selection=null,timer=null,active=null,lastPages=[],lastContext=null;
 const send=(type,extra={})=>window.parent.postMessage({isStreamlitMessage:true,type,...extra},'*');
 const uuid=()=>crypto.randomUUID();
-function runsFor(node,bold=false,out=[]){
- if(node.nodeType===Node.TEXT_NODE){out.push({text:node.textContent,bold});return out;}
+function hexColor(value){
+ if(/^#[0-9a-f]{6}$/i.test(value))return value.toLowerCase();
+ const rgb=value.match(/^rgb\(\s*(\d+),\s*(\d+),\s*(\d+)\s*\)$/);
+ return rgb?'#'+rgb.slice(1).map(n=>Number(n).toString(16).padStart(2,'0')).join(''):null;
+}
+function runsFor(node,bold=false,out=[],color=null){
+ if(node.nodeType===Node.TEXT_NODE){out.push({text:node.textContent,bold,...(color?{color}:{})});return out;}
  if(node.nodeType!==Node.ELEMENT_NODE)return out;
  const strong=bold||['B','STRONG'].includes(node.tagName)||Number(node.style.fontWeight)>=600;
+ if(['SPAN','FONT','B','STRONG','I','EM'].includes(node.tagName))color=hexColor(node.style.color||node.getAttribute('color')||'')||color;
  if(node.tagName==='BR'){out.push({text:'\n',bold:strong});return out;}
  for(const child of node.childNodes){
   if(child.nodeType===Node.ELEMENT_NODE&&['P','DIV'].includes(child.tagName)&&out.length&& !out.at(-1).text.endsWith('\n'))out.push({text:'\n',bold:strong});
-  runsFor(child,strong,out);
+  runsFor(child,strong,out,color);
  }return out;
 }
 function blocks(){
@@ -107,6 +113,7 @@ function blocks(){
 function appendRuns(node,runs){
  for(const run of runs){
   const span=document.createElement(run.bold?'b':'span');
+  if(run.color)span.style.color=run.color;
   run.text.split('\n').forEach((text,index)=>{if(index)span.appendChild(document.createElement('br'));span.appendChild(document.createTextNode(text));});node.appendChild(span);
  }
 }
@@ -214,6 +221,10 @@ function applyFontStyle(property,value){
  if(selection&&target.contains(selection.startContainer)){
   const s=window.getSelection();s.removeAllRanges();s.addRange(selection);
  }
+ if(property==='color'&&!window.getSelection().isCollapsed&&target.contains(window.getSelection().anchorNode)){
+  document.execCommand('styleWithCSS',false,true);document.execCommand('foreColor',false,value);
+  if(active)syncPreview();else markChanged();clearTimeout(timer);publish();return;
+ }
  for(const node of styleTargets()){
   if(property==='font_size'){
    node.dataset.fontSize=value;const scale=active?active.stage.clientWidth/595.2:1;
@@ -246,7 +257,7 @@ document.querySelectorAll('[data-command]').forEach(button=>{
     const prefix=`${item.number||1}. `;item.text=prefix+item.text;item.runs.unshift({text:prefix,bold:false});
    }
    item.type={heading:'heading',subheading:'subheading',bullet:'bullet',number:'number',clear:'body'}[cmd];
-   if(cmd==='clear'){item.runs.forEach(run=>run.bold=false);delete item.font_size;delete item.color;}
+   if(cmd==='clear'){item.runs.forEach(run=>{run.bold=false;delete run.color;});delete item.font_size;delete item.color;}
    restore(items);const node=active.node;active=null;node.remove();markChanged();publish();return;
   }
   if(!active){

@@ -151,7 +151,11 @@ def clean_blocks(raw: list[dict]) -> list[dict]:
             raise ValueError("Unsupported editor block type.")
         runs = item.get("runs") or [{"text": item.get("text", ""), "bold": False}]
         runs = [{"text": normalize_article_text(str(r.get("text", ""))),
-                 "bold": bool(r.get("bold", False))} for r in runs]
+                 "bold": bool(r.get("bold", False)),
+                 **({"color":str(r["color"]).lower()} if r.get("color") else {})} for r in runs]
+        for run in runs:
+            if run.get("color") and not re.fullmatch(r"#[0-9a-f]{6}",run["color"]):
+                raise ValueError("Choose a valid text color.")
         text = "".join(r["text"] for r in runs)
         if text.strip():
             alignment = item.get("align", "justify" if kind == "body" else "left")
@@ -176,8 +180,13 @@ def clean_blocks(raw: list[dict]) -> list[dict]:
     return blocks
 
 def inline_html(block: dict) -> str:
-    return "".join(("<b>" + escape(r["text"]) + "</b>" if r["bold"] else escape(r["text"]))
-                   .replace("\n", "<br>") for r in block["runs"])
+    parts = []
+    for run in block["runs"]:
+        content = escape(run["text"]).replace("\n", "<br>")
+        if run["bold"]: content = f"<b>{content}</b>"
+        if run.get("color"): content = f'<span style="color:{run["color"]}">{content}</span>'
+        parts.append(content)
+    return "".join(parts)
 
 def story_css(body: Path, sub: Path) -> str:
     return f'''
@@ -305,7 +314,7 @@ def title_layout(text: str, font_size=None) -> tuple[list[str], float, float]:
             return lines, float(size), leading
     raise ValueError("The title is too long for its front-page area. Edit it or its line breaks in the preview.")
 
-def draw_title(page: fitz.Page, text: str, font_size=None, color=None) -> None:
+def draw_title(page: fitz.Page, text: str, font_size=None, color=None, runs=None) -> None:
     fonts = {True: fitz.Font(fontfile=str(FONT_TITLE)), False: fitz.Font(fontfile=str(FONT_01))}
     page.insert_font(fontname="TitleTam", fontfile=str(FONT_TITLE))
     page.insert_font(fontname="TitleLatin", fontfile=str(FONT_01))
@@ -318,13 +327,23 @@ def draw_title(page: fitz.Page, text: str, font_size=None, color=None) -> None:
     baseline = TITLE_RECT.y0 + (TITLE_RECT.height-height)/2 + size*ascent
     def width(value):
         return sum(fonts[t].text_length(s, fontsize=size) for s, t in title_segments(value))
+    colors = [run.get("color") for run in (runs or [{"text":text}]) for _ in run["text"]]
+    cursor = 0
     for index, line in enumerate(lines):
         x = TITLE_RECT.x0 + (TITLE_RECT.width - width(line)) / 2
-        for segment, tamil in title_segments(line):
+        groups = []
+        for char in line:
+            while cursor < len(text) and text[cursor].isspace() and not char.isspace(): cursor += 1
+            shade = colors[cursor] if cursor < len(colors) else None
+            if groups and groups[-1][1] == shade: groups[-1] = (groups[-1][0]+char,shade)
+            else: groups.append((char,shade))
+            cursor += 1
+        segments = [(segment,tamil,shade) for value,shade in groups for segment,tamil in title_segments(value)]
+        for segment, tamil, shade in segments:
             validate_text(segment, FONT_TITLE if tamil else FONT_01)
             page.insert_text((x, baseline + index * leading), segment,
                              fontname="TitleTam" if tamil else "TitleLatin", fontsize=size,
-                             color=chosen_color if chosen_color is not None else BLACK if index == 0 else BLUE)
+                             color=tuple(int(shade[i:i+2],16)/255 for i in (1,3,5)) if shade else chosen_color if chosen_color is not None else BLACK if index == 0 else BLUE)
             x += fonts[tamil].text_length(segment, fontsize=size)
 
 def draw_header(page: fitz.Page, selected: date, number: int, body: Path) -> None:
@@ -364,7 +383,7 @@ def generate_pdf(article: list[dict], selected: date, uploads=None, small_crop=N
             raise ValueError("The front template dimensions differ from the supplied reference.")
         page = add_template(output, front)
         draw_photos(page, uploads, front=True, small_crop=small_crop,photo_crops=photo_crops)
-        draw_title(page, title,title_block.get("font_size"),title_block.get("color"))
+        draw_title(page, title,title_block.get("font_size"),title_block.get("color"),title_block["runs"])
         page, y = None, CONTENT_RECT.y0
         def new_page():
             page = add_template(output, content)
