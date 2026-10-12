@@ -518,6 +518,8 @@ def main() -> None:
     import streamlit.components.v1 as components
     st.set_page_config(page_title="Tamil Magazine PDF", page_icon="📰", layout="wide")
     st.title("Tamil Magazine PDF Generator")
+    auto_preview = st.toggle("Auto preview refresh",value=True,key="auto_preview")
+    refresh_preview = st.session_state.pop("refresh_preview_requested",False)
     selected = st.date_input("Date", value=datetime.now(ZoneInfo("Asia/Kolkata")).date(), format="DD.MM.YYYY")
     try:
         notices = font_notices()
@@ -554,7 +556,7 @@ def main() -> None:
     # upload boxes appear for exactly the current content pages, even if a
     # photo-filled export cannot satisfy the size limit yet.
     layout_signature = repr(article)
-    if layout_signature != st.session_state.get("oval_layout_signature"):
+    if (auto_preview or refresh_preview) and layout_signature != st.session_state.get("oval_layout_signature"):
         try:
             count = generate_pdf(article,selected,save=False,oval_photos={},enforce_size=False).page_count if article else 1
             st.session_state["oval_page_count"] = count
@@ -605,7 +607,7 @@ def main() -> None:
                  tuple((slot,hashlib.sha256(data).hexdigest()) for slot,data in uploads.items()),
                  tuple((number,hashlib.sha256(data).hexdigest()) for number,data in oval_photos.items()))
     fingerprint = hashlib.sha256(repr(signature).encode()).hexdigest()
-    if fingerprint != st.session_state.get("preview_fingerprint"):
+    if (auto_preview or refresh_preview) and fingerprint != st.session_state.get("preview_fingerprint"):
         try:
             result = generate_pdf(article,selected,uploads,save=False,photo_crops=photo_crops,
                                   oval_photos=oval_photos,oval_crops=oval_crops) if article else blank_preview(selected,uploads,photo_crops=photo_crops)
@@ -617,12 +619,14 @@ def main() -> None:
             st.session_state["preview_pages"] = []
             st.session_state["preview_error"] = str(error)
         st.session_state["preview_fingerprint"] = fingerprint
+        st.session_state["preview_revision"] = revision
     if st.session_state.get("generated_for") != fingerprint:
         st.session_state.pop("pdf_bytes",None)
     component = components.declare_component("tamil_article", path=str(ROOT / "editor"))
     value = component(font=font_data,initial=article,initial_revision=revision,
-                      preview=st.session_state.get("preview_pages",[]),preview_revision=revision,
+                      preview=st.session_state.get("preview_pages",[]),preview_revision=st.session_state.get("preview_revision","initial"),
                       preview_error=st.session_state.get("preview_error",""),context=fingerprint,
+                      auto_preview=auto_preview,preview_stale=fingerprint!=st.session_state.get("preview_fingerprint"),
                       uploaded_slots=list(uploads),
                       key="article_editor",default=None)
     if value:
@@ -632,7 +636,15 @@ def main() -> None:
             st.session_state["article_revision"] = value.get("revision",revision)
             st.rerun()
         request = value.get("request")
+        refresh_request = value.get("refresh_request")
+        if refresh_request and refresh_request != st.session_state.get("processed_refresh_request"):
+            st.session_state["processed_refresh_request"] = refresh_request
+            st.session_state["refresh_preview_requested"] = True
+            st.rerun()
         if request and request != st.session_state.get("processed_request"):
+            if fingerprint != st.session_state.get("preview_fingerprint"):
+                st.session_state["refresh_preview_requested"] = True
+                st.rerun()
             st.session_state["processed_request"] = request
             st.session_state.pop("pdf_bytes", None)
             try:

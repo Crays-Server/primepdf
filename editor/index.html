@@ -31,14 +31,14 @@ h3{font-size:14px;margin:8px 0}.pane{min-width:0}
 <button data-command="break">LINE BREAK</button>
 <label class="font-control">Size (pt)<input id="font-size" type="number" min="8" max="96" step="1" value="22" aria-label="Font size in points"></label><button id="apply-size">APPLY SIZE</button>
 <label class="font-control">Text color<input id="text-color" type="color" value="#000000" aria-label="Text color"></label><button id="apply-color">APPLY COLOR</button>
-<span class="help">Size applies to the paragraph. Color applies to selected text, or the paragraph if nothing is selected.</span><button id="generate">GENERATE PDF</button>
+<span class="help">Size applies to the paragraph. Color applies to selected text, or the paragraph if nothing is selected.</span><button id="refresh-preview">REFRESH PREVIEW</button><button id="generate">GENERATE PDF</button>
 </div>
 <div id="status" aria-live="polite">Preparing page preview…</div><div id="error" role="alert"></div>
 <div class="workspace"><section class="pane"><h3>Article</h3><div id="editor" contenteditable="true" role="textbox" aria-label="Article content" aria-multiline="true" spellcheck="false"></div></section>
 <section class="pane"><h3>Live PDF preview · double-click text to edit</h3><div id="preview" aria-label="Live PDF pages"></div></section></div>
 <script>
 const editor=document.getElementById('editor'),preview=document.getElementById('preview');
-let initialized=false,request=null,revision='initial',selection=null,timer=null,active=null,lastPages=[],lastContext=null;
+let initialized=false,request=null,refreshRequest=null,autoPreview=true,revision='initial',selection=null,timer=null,active=null,lastPages=[],lastContext=null;
 const send=(type,extra={})=>window.parent.postMessage({isStreamlitMessage:true,type,...extra},'*');
 const uuid=()=>crypto.randomUUID();
 function hexColor(value){
@@ -134,8 +134,8 @@ function restore(items){
   }editor.appendChild(node);
  }
 }
-function publish(){send('streamlit:setComponentValue',{value:{blocks:blocks(),request,revision},dataType:'json'});}
-function markChanged(){revision=uuid();preview.classList.add('pending');document.getElementById('status').textContent='Updating live PDF…';}
+function publish(){send('streamlit:setComponentValue',{value:{blocks:blocks(),request,refresh_request:refreshRequest,revision},dataType:'json'});}
+function markChanged(){revision=uuid();preview.classList.add('pending');document.getElementById('status').textContent=autoPreview?'Updating live PDF…':'Preview out of date — click REFRESH PREVIEW';}
 function persist(){markChanged();clearTimeout(timer);timer=setTimeout(publish,400);}
 editor.addEventListener('input',persist);
 document.addEventListener('selectionchange',()=>{
@@ -295,20 +295,26 @@ editor.addEventListener('keydown',event=>{
 document.getElementById('generate').addEventListener('click',()=>{
  if(active)commitPreview();clearTimeout(timer);request=uuid();publish();
 });
+document.getElementById('refresh-preview').addEventListener('mousedown',event=>event.preventDefault());
+document.getElementById('refresh-preview').addEventListener('click',()=>{
+ if(active)commitPreview();clearTimeout(timer);refreshRequest=uuid();publish();
+});
 window.addEventListener('message',event=>{
  if(event.source!==window.parent||event.data.type!=='streamlit:render')return;
  const args=event.data.args;
+ autoPreview=args.auto_preview!==false;
  window.uploadedSlots=args.uploaded_slots||[];
  if(!initialized){
   const style=document.createElement('style');style.textContent=`@font-face{font-family:Article;src:url(data:font/ttf;base64,${args.font})}`;
   document.head.appendChild(style);restore(args.initial);revision=args.initial_revision||'initial';initialized=true;
  }
- if(args.preview_revision===revision){
+ if(args.preview_revision===revision&&!args.preview_stale){
   preview.classList.remove('pending');
   renderPages(args.preview||[]);lastContext=args.context;
-  document.getElementById('status').textContent=args.preview_error?'Preview needs an edit':`Live PDF · ${(args.preview||[]).length} pages · edits update automatically`;
+  document.getElementById('status').textContent=args.preview_error?'Preview needs an edit':`Live PDF · ${(args.preview||[]).length} pages · ${autoPreview?'edits update automatically':'manual refresh'}`;
   const error=document.getElementById('error');error.textContent=args.preview_error||'';error.style.display=args.preview_error?'block':'none';
  }
+ else if(!autoPreview){preview.classList.add('pending');document.getElementById('status').textContent='Preview out of date — click REFRESH PREVIEW';}
  send('streamlit:setFrameHeight',{height:Math.max(910,document.body.scrollHeight+8)});
 });
 send('streamlit:componentReady',{apiVersion:1});send('streamlit:setFrameHeight',{height:910});

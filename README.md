@@ -34,7 +34,7 @@ The app does not require an AI API, API key, Node.js build, database, or externa
 | --- | --- |
 | Article input | Plain-text paste, paragraph blocks, Tamil and supported Latin characters |
 | Magazine layout | Original template artwork, front title, multiple content pages, protected lower photo area |
-| Preview | PNG renders of the actual compressed PDF; automatic refresh after edits |
+| Preview | PNG renders of the actual compressed PDF; automatic or on-demand refresh |
 | Editing on the preview | Double-click a text block to change its source text; reflow after the edit |
 | Text formatting | Headings, subheadings, bold, bullets, numbered lists, left/center/justified paragraph alignment |
 | Font size | Paragraph/heading sizes from 8 to 96 pt, with title auto-fitting inside its available area |
@@ -163,10 +163,10 @@ Stop an already running Streamlit process before restarting it, then refresh the
 5. The first block marked **HEADING** becomes the front title. If none is marked, the first nonempty content block is used. The chosen title is removed from the body flow.
 6. Select a paragraph or heading and use the toolbar for its block type, alignment, or size. Enter a size and click **APPLY SIZE**.
 7. To color a single word or full stop, select those characters, choose the color, and click **APPLY COLOR**. With no characters selected, the color applies to the paragraph/heading.
-8. Review the live pages. Double-click a text overlay to edit that source block directly from the PDF preview. Use **Shift+Enter** or **LINE BREAK** for an explicit newline. Press **Escape** or click outside the edit area to finish.
+8. Review the live pages. Turn **Auto preview refresh** off to make several edits without rendering a PDF after every change, then click **REFRESH PREVIEW** once. Manual mode also defers recalculating content-page upload boxes until refresh. Turn auto refresh on to resume automatic updates. Double-click a text overlay to edit that source block directly from the PDF preview. Use **Shift+Enter** or **LINE BREAK** for an explicit newline. Press **Escape** or click outside the edit area to finish. Outdated preview text overlays are disabled until refreshed.
 9. Click **GENERATE PDF**, check the displayed file size, then **DOWNLOAD PDF**.
 
-Changing content, date, or photo settings invalidates the previous download. Generate again after the preview updates. **CLEAR** removes formatting and restores ordinary body text; it is not a delete-content button.
+Changing content, date, or photo settings invalidates the previous download. Generate again after the preview updates. **GENERATE PDF** refreshes an outdated preview before exporting, including in manual mode. **CLEAR** removes formatting and restores ordinary body text; it is not a delete-content button.
 
 ## Technical architecture
 
