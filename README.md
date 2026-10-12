@@ -1,6 +1,6 @@
 # PrimePDF — Tamil Magazine PDF Generator
 
-PrimePDF turns a Tamil article and up to five uploaded photos into a magazine PDF using the supplied front and content-page templates. It includes an editable live PDF preview, automatic pagination, paragraph formatting, selected-character colors, photo cropping, and a strict export size limit below 600 KB.
+PrimePDF turns a Tamil article, four optional front photos, and optional per-page oval photos into a magazine PDF using the supplied front and content-page templates. It includes an editable live PDF preview, automatic pagination, paragraph formatting, selected-character colors, photo cropping, and a strict export size limit below 600 KB.
 
 **Deployed on Streamlit:** [primepdf.streamlit.app](https://primepdf.streamlit.app/)
 
@@ -42,7 +42,7 @@ The app does not require an AI API, API key, Node.js build, database, or externa
 | Numbered subheadings | Keep the visible number when a numbered item is converted to a subheading |
 | Explicit line breaks | Shift+Enter or LINE BREAK; front titles may span three or more lines if they fit |
 | Dates and page numbers | Tamil month names; visible-ink centering in the content-page header |
-| Photos | Five independent uploads; crop, zoom, horizontal movement, and vertical movement inside fixed frames |
+| Photos | Four front uploads plus an optional oval upload for each content page; independent crop, zoom, horizontal movement, and vertical movement inside fixed frames |
 | Export | Download the same PDF bytes used for the successful preview; files strictly below 600,000 bytes |
 
 This is a generator for this magazine design. It does not import arbitrary PDFs for editing, provide free dragging of template elements, or create article text with AI.
@@ -157,7 +157,7 @@ Stop an already running Streamlit process before restarting it, then refresh the
 ## Using the application
 
 1. Choose the issue date. The default date uses `Asia/Kolkata`.
-2. Upload any of the five photos. Missing uploads keep the template's original placeholder area.
+2. Upload any of the four front photos. After pasting an article, **Oval photos by content page** shows one optional upload for each content page. A ten-page PDF has nine oval upload boxes, labeled Page 2 through Page 10. Leave a box empty or disable **Show photo** to keep that page's oval blank.
 3. Open **Image movement / crop controls**, select a photo tab, and adjust its image inside the existing frame.
 4. Paste the article into the Article editor. Paste handling uses plain text; source HTML formatting is not imported. Lines starting with a bullet marker or a numeric marker such as `1.` are recognized as list content.
 5. The first block marked **HEADING** becomes the front title. If none is marked, the first nonempty content block is used. The chosen title is removed from the body flow.
@@ -173,7 +173,7 @@ Changing content, date, or photo settings invalidates the previous download. Gen
 ```mermaid
 flowchart TD
     A[Article editor and preview edits] --> B[Structured blocks and runs]
-    C[Date and five photo uploads] --> D[Streamlit session state]
+    C[Date, front photos, and per-page oval photos] --> D[Streamlit session state]
     B --> D
     D --> E[Validate text, fonts, and styles]
     E --> F[Templates, photo masks, and text layout]
@@ -303,11 +303,11 @@ Synthetic bold uses the selected body font's outlines through a generated font a
 | `center` | Front center photo | Tall middle frame |
 | `right` | Front right photo | Tilted right frame |
 | `small` | Small front photo | Shaped frame below the middle frame |
-| `oval` | Oval photo on all content pages | Bottom oval, repeated on every content page |
+| `oval` | Page N oval photo (optional) | Bottom oval on that specific content page only |
 
 Accepted extensions are PNG, JPG/JPEG, and WebP. Each uploaded file is checked against **25 × 1024 × 1024 bytes** before image processing. EXIF orientation is applied, and the image is converted to RGB.
 
-All slots have independent controls:
+All front slots and each page's oval have independent controls:
 
 - Zoom: **1.00–3.00**, step **0.05**.
 - Horizontal pan: **−1.00–1.00**, step **0.05**.
@@ -318,6 +318,10 @@ Controls affect the crop inside a fixed frame. They do not move frame borders or
 The `cover()` operation selects a crop matching the frame aspect ratio. Front large frames use perspective transforms solved with NumPy; masks clip their curved/tilted interiors. The small front frame uses its supplied mask. The content oval mask is generated dynamically; its rectangle is `[130, 565, 467, 789]` in `photos.py`.
 
 Prepared photos are cached in memory with an LRU cache of **24 entries**, keyed by slot, upload bytes, and crop settings. Photos are initially prepared at template-resolution dimensions; final PDF compression may reduce their resolution.
+
+Content-page upload boxes are derived from the current article's pagination. Uploading, hiding, or cropping photos does not change the number of pages. Each oval has a **Show photo** checkbox; turning it off keeps the upload available but excludes it from the preview and export. Assignments follow printed page numbers, so review them after editing text that changes pagination. Boxes for pages removed by an article edit disappear.
+
+The generator accepts `oval_photos` and `oval_crops` dictionaries keyed by printed page number (2 for the first content page). An empty `oval_photos` dictionary leaves every content oval blank. The application uses this per-page mode; the older shared-oval generator argument remains available for compatibility with existing local callers.
 
 ## 600 KB export limit
 
@@ -404,7 +408,7 @@ From a fresh clone, install requirements and launch the app. Then:
 2. Convert the numbered item to SUBHEADING and confirm its number remains visible.
 3. Select one word and a full stop separately; apply color and confirm only each selection changes.
 4. Change a paragraph size, align a paragraph, and add a title line break.
-5. Upload all five photos and exercise each slot's crop controls.
+5. Upload the four front photos and different oval photos on selected content pages. Exercise their crop controls, hide one oval, and confirm unassigned content pages stay blank.
 6. Change the date and confirm the article remains in the same session.
 7. Generate and download; confirm byte length is below 600,000 and review every page.
 

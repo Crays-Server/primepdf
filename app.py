@@ -383,7 +383,8 @@ class Generation:
     data: bytes
     placements: list[dict]
 
-def generate_pdf(article: list[dict], selected: date, uploads=None, small_crop=None, save=True, photo_crops=None) -> Generation:
+def generate_pdf(article: list[dict], selected: date, uploads=None, small_crop=None, save=True, photo_crops=None,
+                 oval_photos=None, oval_crops=None, enforce_size=True) -> Generation:
     blocks = clean_blocks(article)
     body, sub = font_paths()
     ensure_bold_font(body)
@@ -406,7 +407,12 @@ def generate_pdf(article: list[dict], selected: date, uploads=None, small_crop=N
         page, y = None, CONTENT_RECT.y0
         def new_page():
             page = add_template(output, content)
-            draw_photos(page, uploads, front=False,photo_crops=photo_crops)
+            if oval_photos is None:
+                draw_photos(page, uploads, front=False,photo_crops=photo_crops)
+            else:
+                number = len(output)
+                draw_photos(page,{"oval":oval_photos.get(number)},front=False,
+                            photo_crops={"oval":(oval_crops or {}).get(number,{})})
             draw_header(page, selected, len(output), body)
             return page
         for index, block in enumerate(blocks):
@@ -463,7 +469,7 @@ def generate_pdf(article: list[dict], selected: date, uploads=None, small_crop=N
             y += 8 if kind in {"heading", "subheading"} else 15.9936
         count = len(output)
         output.set_metadata({"title": title, "creator": "Local Tamil magazine generator"})
-        data = compact_pdf(output)
+        data = compact_pdf(output) if enforce_size else output.tobytes(garbage=4,deflate=True)
     path = None
     if save:
         OUTPUT_DIR.mkdir(exist_ok=True)
@@ -511,8 +517,8 @@ def main() -> None:
     st.subheader("Magazine photos")
     uploads = {}
     labels = {"left":"Front left photo", "center":"Front center photo", "right":"Front right photo",
-              "small":"Small front photo", "oval":"Oval photo on all content pages"}
-    for column, (slot, label) in zip(st.columns(5), labels.items()):
+              "small":"Small front photo"}
+    for column, (slot, label) in zip(st.columns(4), labels.items()):
         with column:
             uploaded = st.file_uploader(label, type=["png","jpg","jpeg","webp"], key=f"photo_{slot}")
             if uploaded is not None:
@@ -520,7 +526,7 @@ def main() -> None:
     with st.expander("Image movement / crop controls"):
         st.caption("Move and zoom each photo inside its existing frame.")
         photo_crops = {}
-        names = {"left":"Left","center":"Center","right":"Right","small":"Small","oval":"Oval"}
+        names = {"left":"Left","center":"Center","right":"Right","small":"Small"}
         for tab,(slot,name) in zip(st.tabs(list(labels.values())),names.items()):
             with tab:
                 photo_crops[slot] = {
@@ -529,12 +535,43 @@ def main() -> None:
                     "pan_y":st.slider(f"{name} photo vertical crop",-1.0,1.0,0.0,0.05,disabled=slot not in uploads)}
     article = st.session_state.get("article",[])
     revision = st.session_state.get("article_revision","initial")
-    signature = ("compact-pdf-v1",MAX_PDF_BYTES,selected.isoformat(),repr(article),repr(photo_crops),
-                 tuple((slot,hashlib.sha256(data).hexdigest()) for slot,data in uploads.items()))
+    # Photos never change pagination. Measure it once per article revision so
+    # upload boxes appear for exactly the current content pages, even if a
+    # photo-filled export cannot satisfy the size limit yet.
+    layout_signature = repr(article)
+    if layout_signature != st.session_state.get("oval_layout_signature"):
+        try:
+            count = generate_pdf(article,selected,save=False,oval_photos={},enforce_size=False).page_count if article else 1
+            st.session_state["oval_page_count"] = count
+        except Exception:
+            st.session_state["oval_page_count"] = 1
+        st.session_state["oval_layout_signature"] = layout_signature
+    oval_photos, oval_crops = {}, {}
+    st.subheader("Oval photos by content page")
+    st.caption("Each page is optional. Leave its upload empty or turn off Show photo to keep that oval blank.")
+    page_count = st.session_state.get("oval_page_count",1)
+    if page_count < 2:
+        st.caption("Paste your article to show one upload box for each content page.")
+    for number in range(2,page_count+1):
+        with st.container(border=True):
+            uploaded = st.file_uploader(f"Page {number} oval photo (optional)",
+                                       type=["png","jpg","jpeg","webp"],key=f"oval_page_{number}")
+            show = st.checkbox(f"Show photo on Page {number}",value=True,key=f"oval_show_{number}")
+            if uploaded is not None and show:
+                oval_photos[number] = uploaded.getvalue()
+            with st.expander(f"Page {number} oval movement / crop"):
+                oval_crops[number] = {
+                    "zoom":st.slider(f"Page {number} oval zoom",1.0,3.0,1.0,0.05,key=f"oval_zoom_{number}",disabled=uploaded is None or not show),
+                    "pan_x":st.slider(f"Page {number} oval horizontal crop",-1.0,1.0,0.0,0.05,key=f"oval_x_{number}",disabled=uploaded is None or not show),
+                    "pan_y":st.slider(f"Page {number} oval vertical crop",-1.0,1.0,0.0,0.05,key=f"oval_y_{number}",disabled=uploaded is None or not show)}
+    signature = ("per-page-oval-v1",MAX_PDF_BYTES,selected.isoformat(),repr(article),repr(photo_crops),repr(oval_crops),
+                 tuple((slot,hashlib.sha256(data).hexdigest()) for slot,data in uploads.items()),
+                 tuple((number,hashlib.sha256(data).hexdigest()) for number,data in oval_photos.items()))
     fingerprint = hashlib.sha256(repr(signature).encode()).hexdigest()
     if fingerprint != st.session_state.get("preview_fingerprint"):
         try:
-            result = generate_pdf(article,selected,uploads,save=False,photo_crops=photo_crops) if article else blank_preview(selected,uploads,photo_crops=photo_crops)
+            result = generate_pdf(article,selected,uploads,save=False,photo_crops=photo_crops,
+                                  oval_photos=oval_photos,oval_crops=oval_crops) if article else blank_preview(selected,uploads,photo_crops=photo_crops)
             st.session_state["preview_result"] = result if article else None
             st.session_state["preview_pages"] = preview_pages(result)
             st.session_state["preview_error"] = ""
