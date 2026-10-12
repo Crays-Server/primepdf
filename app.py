@@ -38,7 +38,21 @@ def compact_pdf(document: fitz.Document) -> bytes:
         return original
     for dpi, quality in [(150,82),(120,72),(100,60),(85,45),(70,30),(50,18)]:
         with fitz.open(stream=original,filetype="pdf") as candidate:
+            # The small shared publication label must remain lossless. Image
+            # rewriting can downsample its reused resource again on each page.
+            # Remove it before rewriting and restore the original artwork after.
+            header_pages, header_xrefs = [], set()
+            for page in candidate:
+                matches = [image for image in page.get_image_info(xrefs=True)
+                           if all(abs(a-b)<0.5 for a,b in zip(image["bbox"],PUBLICATION_RECT))]
+                if matches:
+                    header_pages.append(page.number)
+                    header_xrefs.update(image["xref"] for image in matches if image["xref"])
+            for xref in header_xrefs:
+                candidate[0].delete_image(xref)
             candidate.rewrite_images(dpi_threshold=dpi+1,dpi_target=dpi,quality=quality)
+            for number in header_pages:
+                candidate[number].insert_image(PUBLICATION_RECT,filename=str(ROOT / "assets/publication.png"))
             data = candidate.tobytes(garbage=4,deflate=True,use_objstms=1)
             if len(data) < MAX_PDF_BYTES:
                 return data
@@ -53,6 +67,7 @@ TITLE_LEFT, TITLE_RIGHT = 32.4728, 584.0653
 TITLE_RECT = fitz.Rect(24.0, 626.0, 571.2, 810.0)
 DATE_RECT = fitz.Rect(1.5, 21.0, 147.5, 49.0)
 NUMBER_RECT = fitz.Rect(497.0, 21.0, 592.0, 49.0)
+PUBLICATION_RECT = fitz.Rect(240,26,364,49)
 BODY_SIZE, BODY_LEADING = 22.0, 35.001
 SUB_SIZE, TITLE_SIZE = 24.0008, 42.0
 BLACK = (0, 0, 0)
@@ -373,7 +388,7 @@ def draw_header(page: fitz.Page, selected: date, number: int, body: Path) -> Non
         css = story_css(body, body) + "body{font-size:16pt;} p{line-height:22pt;}"
         story = make_story(block, css)
         centered_story(page, story, rect)
-    page.insert_image(fitz.Rect(240, 26, 364, 49), filename=str(ROOT / "assets/publication.png"))
+    page.insert_image(PUBLICATION_RECT, filename=str(ROOT / "assets/publication.png"))
 
 @dataclass
 class Generation:
@@ -586,7 +601,7 @@ def main() -> None:
                         "pan_x":st.slider(f"Page {number} oval horizontal crop",-1.0,1.0,current["pan_x"],0.05,key=f"oval_x_{number}",disabled=disabled),
                         "pan_y":st.slider(f"Page {number} oval vertical crop",-1.0,1.0,current["pan_y"],0.05,key=f"oval_y_{number}",disabled=disabled)}
                     saved_crops[number] = dict(oval_crops[number])
-    signature = ("per-page-oval-v1",MAX_PDF_BYTES,selected.isoformat(),repr(article),repr(photo_crops),repr(oval_crops),
+    signature = ("per-page-oval-v2-lossless-header",MAX_PDF_BYTES,selected.isoformat(),repr(article),repr(photo_crops),repr(oval_crops),
                  tuple((slot,hashlib.sha256(data).hexdigest()) for slot,data in uploads.items()),
                  tuple((number,hashlib.sha256(data).hexdigest()) for number,data in oval_photos.items()))
     fingerprint = hashlib.sha256(repr(signature).encode()).hexdigest()

@@ -342,7 +342,7 @@ The limit is strict: **PDF byte length must be less than 600,000**. This uses de
 | 5 | 70 | 30 |
 | 6 | 50 | 18 |
 
-The first candidate below the limit is used. Text remains vector/font-based; pages are not flattened into screenshots. Photo detail can decrease when stronger compression is needed. Preview PNGs are rendered from the final compressed bytes, so the preview reflects that quality.
+The first candidate below the limit is used. Text remains vector/font-based; pages are not flattened into screenshots. The small publication-header artwork is restored from its original lossless asset after image rewriting, preventing repeated downsampling across content pages. Photo detail can decrease when stronger compression is needed. Preview PNGs are rendered from the final compressed bytes, so the preview reflects that quality.
 
 If all attempts fail, generation stops with an edit prompt instead of making an oversized download available. Large page counts or very complex content can exceed the limit even after image compression.
 
