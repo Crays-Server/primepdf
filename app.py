@@ -546,24 +546,46 @@ def main() -> None:
         except Exception:
             st.session_state["oval_page_count"] = 1
         st.session_state["oval_layout_signature"] = layout_signature
-    oval_photos, oval_crops = {}, {}
-    st.subheader("Oval photos by content page")
-    st.caption("Each page is optional. Leave its upload empty or turn off Show photo to keep that oval blank.")
+    oval_photos = {}
     page_count = st.session_state.get("oval_page_count",1)
-    if page_count < 2:
-        st.caption("Paste your article to show one upload box for each content page.")
-    for number in range(2,page_count+1):
-        with st.container(border=True):
-            uploaded = st.file_uploader(f"Page {number} oval photo (optional)",
-                                       type=["png","jpg","jpeg","webp"],key=f"oval_page_{number}")
-            show = st.checkbox(f"Show photo on Page {number}",value=True,key=f"oval_show_{number}")
-            if uploaded is not None and show:
-                oval_photos[number] = uploaded.getvalue()
-            with st.expander(f"Page {number} oval movement / crop"):
-                oval_crops[number] = {
-                    "zoom":st.slider(f"Page {number} oval zoom",1.0,3.0,1.0,0.05,key=f"oval_zoom_{number}",disabled=uploaded is None or not show),
-                    "pan_x":st.slider(f"Page {number} oval horizontal crop",-1.0,1.0,0.0,0.05,key=f"oval_x_{number}",disabled=uploaded is None or not show),
-                    "pan_y":st.slider(f"Page {number} oval vertical crop",-1.0,1.0,0.0,0.05,key=f"oval_y_{number}",disabled=uploaded is None or not show)}
+    saved_crops = st.session_state.setdefault("oval_crop_values",{})
+    oval_crops = {number:dict(saved_crops.get(number,{
+                    "zoom":st.session_state.get(f"oval_zoom_{number}",1.0),
+                    "pan_x":st.session_state.get(f"oval_x_{number}",0.0),
+                    "pan_y":st.session_state.get(f"oval_y_{number}",0.0)}))
+                  for number in range(2,page_count+1)}
+    saved_crops.update({number:dict(crop) for number,crop in oval_crops.items()})
+    with st.sidebar:
+        st.header("Oval photos")
+        st.caption("Adjust a page here while keeping its PDF preview visible.")
+        if page_count < 2:
+            st.caption("Paste your article to show its content-page controls.")
+        else:
+            selected_page = st.selectbox("Oval page",list(range(2,page_count+1)),
+                                         format_func=lambda number:f"Page {number}",key="oval_selected_page")
+            movement_panel = st.container()
+            uploads_by_page, shown_by_page = {}, {}
+            with st.expander("Page uploads (optional)"):
+                st.caption("Leave an upload empty or turn off Show photo to keep that oval blank.")
+                for number in range(2,page_count+1):
+                    uploaded = st.file_uploader(f"Page {number} oval photo (optional)",
+                                               type=["png","jpg","jpeg","webp"],key=f"oval_page_{number}")
+                    show = st.checkbox(f"Show photo on Page {number}",value=True,key=f"oval_show_{number}")
+                    uploads_by_page[number], shown_by_page[number] = uploaded, show
+                    if uploaded is not None and show:
+                        oval_photos[number] = uploaded.getvalue()
+            with movement_panel:
+                number = selected_page
+                disabled = uploads_by_page[number] is None or not shown_by_page[number]
+                if disabled:
+                    st.caption(f"Upload and enable a photo for Page {number} in Page uploads to adjust it.")
+                with st.expander(f"Page {number} oval movement / crop",expanded=True):
+                    current = oval_crops[number]
+                    oval_crops[number] = {
+                        "zoom":st.slider(f"Page {number} oval zoom",1.0,3.0,current["zoom"],0.05,key=f"oval_zoom_{number}",disabled=disabled),
+                        "pan_x":st.slider(f"Page {number} oval horizontal crop",-1.0,1.0,current["pan_x"],0.05,key=f"oval_x_{number}",disabled=disabled),
+                        "pan_y":st.slider(f"Page {number} oval vertical crop",-1.0,1.0,current["pan_y"],0.05,key=f"oval_y_{number}",disabled=disabled)}
+                    saved_crops[number] = dict(oval_crops[number])
     signature = ("per-page-oval-v1",MAX_PDF_BYTES,selected.isoformat(),repr(article),repr(photo_crops),repr(oval_crops),
                  tuple((slot,hashlib.sha256(data).hexdigest()) for slot,data in uploads.items()),
                  tuple((number,hashlib.sha256(data).hexdigest()) for number,data in oval_photos.items()))

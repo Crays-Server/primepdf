@@ -157,7 +157,7 @@ Stop an already running Streamlit process before restarting it, then refresh the
 ## Using the application
 
 1. Choose the issue date. The default date uses `Asia/Kolkata`.
-2. Upload any of the four front photos. After pasting an article, **Oval photos by content page** shows one optional upload for each content page. A ten-page PDF has nine oval upload boxes, labeled Page 2 through Page 10. Leave a box empty or disable **Show photo** to keep that page's oval blank.
+2. Upload any of the four front photos. After pasting an article, the **Oval photos** sidebar's **Page uploads (optional)** accordion shows one optional upload for each content page. A ten-page PDF has nine oval upload boxes, labeled Page 2 through Page 10. Leave a box empty or disable **Show photo** to keep that page's oval blank. Select **Oval page** to adjust that page's zoom and crop in the sidebar while viewing the preview; each page retains its own settings when you switch pages.
 3. Open **Image movement / crop controls**, select a photo tab, and adjust its image inside the existing frame.
 4. Paste the article into the Article editor. Paste handling uses plain text; source HTML formatting is not imported. Lines starting with a bullet marker or a numeric marker such as `1.` are recognized as list content.
 5. The first block marked **HEADING** becomes the front title. If none is marked, the first nonempty content block is used. The chosen title is removed from the body flow.
