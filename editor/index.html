@@ -165,10 +165,10 @@ function beginPreviewEdit(meta,stage){
  node.contentEditable='true';node.spellcheck=false;node.setAttribute('role','textbox');node.setAttribute('aria-label','Edit text on PDF page');
  const [x0,y0,x1,y1]=meta.rect,scale=stage.clientWidth/595.2;
  node.style.left=x0/595.2*100+'%';node.style.top=y0/841.92*100+'%';node.style.width=(x1-x0)/595.2*100+'%';
- node.style.maxHeight=(meta.page===0?810-y0:539-y0)/841.92*stage.clientHeight+'px';
+ node.style.maxHeight=((meta.edit_bottom??(meta.page===0?810:539))-y0)/841.92*stage.clientHeight+'px';
  node.style.minHeight=Math.max(35,(y1-y0)*scale)+'px';
  node.style.fontSize=(meta.font_size||(meta.page===0?42:meta.type==='subheading'?24:22))*scale+'px';
- node.style.lineHeight=(meta.page===0?(meta.font_size||42)*60/42:meta.line_height||35.001)*scale+'px';node.style.textAlign=meta.page===0?'center':item.align||'left';
+ node.style.lineHeight=(meta.line_height||(meta.page===0?(meta.font_size||42)*60/42:35.001))*scale+'px';node.style.textAlign=meta.page===0?(meta.align||'center'):item.align||'left';
  if(item.font_size)node.dataset.fontSize=item.font_size;
  if(item.color){node.dataset.textColor=item.color;node.style.color=item.color;}
  appendRuns(node,item.runs||[{text:item.text,bold:false}]);stage.appendChild(node);
@@ -229,7 +229,7 @@ function applyFontStyle(property,value){
   if(property==='font_size'){
    node.dataset.fontSize=value;const scale=active?active.stage.clientWidth/595.2:1;
    node.style.fontSize=value*scale+'px';
-   if(active){const baseline=active.meta.page===0?60/42:35.001/(active.meta.type==='subheading'||active.meta.type==='heading'?24:22);node.style.lineHeight=value*baseline*scale+'px';}
+   if(active){const baseline=active.meta.line_height/active.meta.font_size||(active.meta.page===0?60/42:35.001/(active.meta.type==='subheading'||active.meta.type==='heading'?24:22));node.style.lineHeight=value*baseline*scale+'px';}
   }else{node.dataset.textColor=value;node.style.color=value;}
  }
  if(active)syncPreview();else markChanged();clearTimeout(timer);publish();

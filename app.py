@@ -15,6 +15,7 @@ import fitz
 from fontTools.ttLib import TTFont
 from PIL import Image
 from photos import draw_photos
+from template_layouts import TEMPLATES, render as render_template
 
 ROOT = Path(__file__).resolve().parent
 FRONT_TEMPLATE = ROOT / "templates/only front.pdf"
@@ -292,8 +293,8 @@ def draw_story(page: fitz.Page, story: fitz.Story) -> None:
     with story_document(story) as overlay:
         page.show_pdf_page(PAGE_RECT, overlay, 0)
 
-def centered_story(page: fitz.Page, story: fitz.Story, target: fitz.Rect) -> None:
-    measure = fitz.Rect(0, 0, target.width, 80)
+def centered_story(page: fitz.Page, story: fitz.Story, target: fitz.Rect, align="center") -> None:
+    measure = fitz.Rect(0, 0, target.width, max(80,target.height))
     more, _ = story.place(measure)
     if more:
         raise ValueError("The header text exceeds its fixed area.")
@@ -307,6 +308,8 @@ def centered_story(page: fitz.Page, story: fitz.Story, target: fitz.Rect) -> Non
             raise ValueError("The header text exceeds its fixed area.")
         cx, cy = (target.x0+target.x1)/2, (target.y0+target.y1)/2
         destination = fitz.Rect(cx-ink.width/2, cy-ink.height/2, cx+ink.width/2, cy+ink.height/2)
+        if align=="left":
+            destination=fitz.Rect(target.x0,destination.y0,target.x0+ink.width,destination.y1)
         page.show_pdf_page(destination, overlay, 0, clip=ink, keep_proportion=False)
 
 def add_template(output: fitz.Document, template: fitz.Document) -> fitz.Page:
@@ -399,7 +402,11 @@ class Generation:
     placements: list[dict]
 
 def generate_pdf(article: list[dict], selected: date, uploads=None, small_crop=None, save=True, photo_crops=None,
-                 oval_photos=None, oval_crops=None, enforce_size=True) -> Generation:
+                 oval_photos=None, oval_crops=None, enforce_size=True, template_id="original") -> Generation:
+    if template_id not in TEMPLATES:
+        raise ValueError("Unknown magazine template.")
+    if template_id != "original":
+        return render_template(globals(),article,selected,uploads,photo_crops,oval_photos,oval_crops,save,enforce_size,template_id)
     blocks = clean_blocks(article)
     body, sub = font_paths()
     ensure_bold_font(body)
@@ -501,7 +508,9 @@ def preview_pages(result: Generation) -> list[dict]:
                           "placements":[p for p in result.placements if p["page"] == index]})
     return pages
 
-def blank_preview(selected: date, uploads=None, small_crop=None, photo_crops=None) -> Generation:
+def blank_preview(selected: date, uploads=None, small_crop=None, photo_crops=None, template_id="original") -> Generation:
+    if template_id != "original":
+        return render_template(globals(),[],selected,uploads,photo_crops,{}, {},False,True,template_id)
     body, _ = font_paths()
     ensure_bold_font(body)
     with fitz.open(FRONT_TEMPLATE) as front, fitz.open(CONTENT_TEMPLATE) as content, fitz.open() as document:
@@ -518,6 +527,7 @@ def main() -> None:
     import streamlit.components.v1 as components
     st.set_page_config(page_title="Tamil Magazine PDF", page_icon="📰", layout="wide")
     st.title("Tamil Magazine PDF Generator")
+    template_id = st.selectbox("Magazine template",list(TEMPLATES),format_func=TEMPLATES.get,key="magazine_template")
     auto_preview = st.toggle("Auto preview refresh",value=True,key="auto_preview")
     refresh_preview = st.session_state.pop("refresh_preview_requested",False)
     selected = st.date_input("Date", value=datetime.now(ZoneInfo("Asia/Kolkata")).date(), format="DD.MM.YYYY")
@@ -535,7 +545,10 @@ def main() -> None:
     uploads = {}
     labels = {"left":"Front left photo", "center":"Front center photo", "right":"Front right photo",
               "small":"Small front photo"}
-    for column, (slot, label) in zip(st.columns(4), labels.items()):
+    if template_id != "original":
+        labels = {"center":"Large front photo (optional)"}
+        st.caption("One upload fills the large photo shape in this template. The original magazine uses four front photos.")
+    for column, (slot, label) in zip(st.columns(len(labels)), labels.items()):
         with column:
             uploaded = st.file_uploader(label, type=["png","jpg","jpeg","webp"], key=f"photo_{slot}")
             if uploaded is not None:
@@ -543,7 +556,7 @@ def main() -> None:
     with st.expander("Image movement / crop controls"):
         st.caption("Move and zoom each photo inside its existing frame.")
         photo_crops = {}
-        names = {"left":"Left","center":"Center","right":"Right","small":"Small"}
+        names = {slot:slot.title() for slot in labels}
         for tab,(slot,name) in zip(st.tabs(list(labels.values())),names.items()):
             with tab:
                 photo_crops[slot] = {
@@ -555,10 +568,10 @@ def main() -> None:
     # Photos never change pagination. Measure it once per article revision so
     # upload boxes appear for exactly the current content pages, even if a
     # photo-filled export cannot satisfy the size limit yet.
-    layout_signature = repr(article)
+    layout_signature = repr((template_id,article))
     if (auto_preview or refresh_preview) and layout_signature != st.session_state.get("oval_layout_signature"):
         try:
-            count = generate_pdf(article,selected,save=False,oval_photos={},enforce_size=False).page_count if article else 1
+            count = generate_pdf(article,selected,save=False,oval_photos={},enforce_size=False,template_id=template_id).page_count if article else 1
             st.session_state["oval_page_count"] = count
         except Exception:
             st.session_state["oval_page_count"] = 1
@@ -572,20 +585,21 @@ def main() -> None:
                     "pan_y":st.session_state.get(f"oval_y_{number}",0.0)}))
                   for number in range(2,page_count+1)}
     saved_crops.update({number:dict(crop) for number,crop in oval_crops.items()})
+    photo_name = "oval" if template_id=="original" else "photo"
     with st.sidebar:
-        st.header("Oval photos")
+        st.header("Oval photos" if template_id=="original" else "Content-page photos")
         st.caption("Adjust a page here while keeping its PDF preview visible.")
         if page_count < 2:
             st.caption("Paste your article to show its content-page controls.")
         else:
-            selected_page = st.selectbox("Oval page",list(range(2,page_count+1)),
+            selected_page = st.selectbox("Oval page" if template_id=="original" else "Photo page",list(range(2,page_count+1)),
                                          format_func=lambda number:f"Page {number}",key="oval_selected_page")
             movement_panel = st.container()
             uploads_by_page, shown_by_page = {}, {}
             with st.expander("Page uploads (optional)"):
-                st.caption("Leave an upload empty or turn off Show photo to keep that oval blank.")
+                st.caption("Leave an upload empty or turn off Show photo to keep the photo area blank.")
                 for number in range(2,page_count+1):
-                    uploaded = st.file_uploader(f"Page {number} oval photo (optional)",
+                    uploaded = st.file_uploader(f"Page {number} photo (optional)",
                                                type=["png","jpg","jpeg","webp"],key=f"oval_page_{number}")
                     show = st.checkbox(f"Show photo on Page {number}",value=True,key=f"oval_show_{number}")
                     uploads_by_page[number], shown_by_page[number] = uploaded, show
@@ -596,21 +610,21 @@ def main() -> None:
                 disabled = uploads_by_page[number] is None or not shown_by_page[number]
                 if disabled:
                     st.caption(f"Upload and enable a photo for Page {number} in Page uploads to adjust it.")
-                with st.expander(f"Page {number} oval movement / crop",expanded=True):
+                with st.expander(f"Page {number} {photo_name} movement / crop",expanded=True):
                     current = oval_crops[number]
                     oval_crops[number] = {
-                        "zoom":st.slider(f"Page {number} oval zoom",1.0,3.0,current["zoom"],0.05,key=f"oval_zoom_{number}",disabled=disabled),
-                        "pan_x":st.slider(f"Page {number} oval horizontal crop",-1.0,1.0,current["pan_x"],0.05,key=f"oval_x_{number}",disabled=disabled),
-                        "pan_y":st.slider(f"Page {number} oval vertical crop",-1.0,1.0,current["pan_y"],0.05,key=f"oval_y_{number}",disabled=disabled)}
+                        "zoom":st.slider(f"Page {number} {photo_name} zoom",1.0,3.0,current["zoom"],0.05,key=f"oval_zoom_{number}",disabled=disabled),
+                        "pan_x":st.slider(f"Page {number} {photo_name} horizontal crop",-1.0,1.0,current["pan_x"],0.05,key=f"oval_x_{number}",disabled=disabled),
+                        "pan_y":st.slider(f"Page {number} {photo_name} vertical crop",-1.0,1.0,current["pan_y"],0.05,key=f"oval_y_{number}",disabled=disabled)}
                     saved_crops[number] = dict(oval_crops[number])
-    signature = ("per-page-oval-v2-lossless-header",MAX_PDF_BYTES,selected.isoformat(),repr(article),repr(photo_crops),repr(oval_crops),
+    signature = ("blank-template-shapes-v2",template_id,MAX_PDF_BYTES,selected.isoformat(),repr(article),repr(photo_crops),repr(oval_crops),
                  tuple((slot,hashlib.sha256(data).hexdigest()) for slot,data in uploads.items()),
                  tuple((number,hashlib.sha256(data).hexdigest()) for number,data in oval_photos.items()))
     fingerprint = hashlib.sha256(repr(signature).encode()).hexdigest()
     if (auto_preview or refresh_preview) and fingerprint != st.session_state.get("preview_fingerprint"):
         try:
             result = generate_pdf(article,selected,uploads,save=False,photo_crops=photo_crops,
-                                  oval_photos=oval_photos,oval_crops=oval_crops) if article else blank_preview(selected,uploads,photo_crops=photo_crops)
+                                  oval_photos=oval_photos,oval_crops=oval_crops,template_id=template_id) if article else blank_preview(selected,uploads,photo_crops=photo_crops,template_id=template_id)
             st.session_state["preview_result"] = result if article else None
             st.session_state["preview_pages"] = preview_pages(result)
             st.session_state["preview_error"] = ""

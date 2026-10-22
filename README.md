@@ -453,3 +453,31 @@ git push origin main
 - Large articles and high-resolution images can use substantial server memory and CPU during generation and preview rendering. There is no background task queue or explicit article-length cap.
 - Dependency ranges are maintained in `requirements.txt`; there is no fully pinned lockfile, so environments can resolve different compatible package versions.
 - No redistribution license is included in the repository. Supplied font and template assets remain subject to their respective owners' permissions.
+# Additional magazine templates
+
+The **Magazine template** selector keeps **Original magazine** as its default and
+also offers Children / toys (Blank), Fabric / flowers (Blank 1), Blue geometric
+(Blank 2), and Cream / teal (Blank 3). The original renderer and its four front
+photo slots remain available. The four new layouts use one optional cover photo
+and independent optional content-page photos in the sidebar. All photo areas
+start blank; the supplied reference photographs and article text are not bundled.
+Movement and zoom controls crop each upload inside its template's fixed frame.
+The children and blue layouts alternate their right and left content-photo
+positions. Text flows through measured regions around the photo areas, which
+remain reserved even without an upload. Select the template before editing;
+when Auto preview refresh is off, use REFRESH PREVIEW after changing templates.
+
+`template_layouts.py` contains the template catalog, title bounds, header/footer
+positions, photo insertion, and content-region pagination. `assets/templates/`
+contains ten cleaned background JPEGs and their corresponding photo-mask PNGs
+prepared from the supplied `Blank.pdf`, `Blank 1.pdf`, `Blank 2.pdf`, and
+`Blank 3.pdf` designs. Their example headings and dates are reference-only and
+are replaced by the editor title and selected date. The large cover slots follow
+the supplied stepped, tilted, rectangular, or rounded shapes;
+these files are required at deployment. No additional dependencies or API keys
+are needed. The new layouts use the supplied complete Sundaram-01 font for
+shaped Tamil text, including titles; their lettering can differ from the
+reference PDFs' embedded fonts. Rich text colors, font size, manual line breaks,
+editable PDF previews, optional per-page photos, and the strict 600,000-byte
+export limit also apply to the added templates. Preview edit bounds follow each
+template's actual text regions.
