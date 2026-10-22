@@ -463,12 +463,15 @@ and independent optional content-page photos in the sidebar. All photo areas
 start blank; the supplied reference photographs and article text are not bundled.
 Movement and zoom controls crop each upload inside its template's fixed frame.
 The children and blue layouts alternate their right and left content-photo
-positions. Text flows through measured regions around the photo areas, which
-remain reserved even without an upload. Select the template before editing;
+positions. Each content page has one logical article area between the header and footer.
+Paragraphs automatically wrap beside and below the template photo/frame, then
+continue onto the next page. Photo areas remain protected even when an upload
+is empty. Wrapping does not split the source paragraph into separate blocks.
+Background flowers remain available for text. Select the template before editing;
 when Auto preview refresh is off, use REFRESH PREVIEW after changing templates.
 
 `template_layouts.py` contains the template catalog, title bounds, header/footer
-positions, photo insertion, and content-region pagination. `assets/templates/`
+positions, photo insertion, and continuous full-page pagination. `assets/templates/`
 contains ten cleaned background JPEGs and their corresponding photo-mask PNGs
 prepared from the supplied `Blank.pdf`, `Blank 1.pdf`, `Blank 2.pdf`, and
 `Blank 3.pdf` designs. Their example headings and dates are reference-only and

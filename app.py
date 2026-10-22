@@ -197,6 +197,8 @@ def clean_blocks(raw: list[dict]) -> list[dict]:
             if alignment not in {"left", "center", "justify"}:
                 alignment = "left"
             style = {}
+            if item.get("align_explicit"):
+                style["align_explicit"] = True
             if item.get("font_size") not in (None, ""):
                 size = float(item["font_size"])
                 if not 8 <= size <= 96:
@@ -617,7 +619,7 @@ def main() -> None:
                         "pan_x":st.slider(f"Page {number} {photo_name} horizontal crop",-1.0,1.0,current["pan_x"],0.05,key=f"oval_x_{number}",disabled=disabled),
                         "pan_y":st.slider(f"Page {number} {photo_name} vertical crop",-1.0,1.0,current["pan_y"],0.05,key=f"oval_y_{number}",disabled=disabled)}
                     saved_crops[number] = dict(oval_crops[number])
-    signature = ("blank-template-shapes-v2",template_id,MAX_PDF_BYTES,selected.isoformat(),repr(article),repr(photo_crops),repr(oval_crops),
+    signature = ("blank-template-natural-spacing-v6",template_id,MAX_PDF_BYTES,selected.isoformat(),repr(article),repr(photo_crops),repr(oval_crops),
                  tuple((slot,hashlib.sha256(data).hexdigest()) for slot,data in uploads.items()),
                  tuple((number,hashlib.sha256(data).hexdigest()) for number,data in oval_photos.items()))
     fingerprint = hashlib.sha256(repr(signature).encode()).hexdigest()
@@ -646,7 +648,7 @@ def main() -> None:
                       preview=st.session_state.get("preview_pages",[]),preview_revision=st.session_state.get("preview_revision","initial"),
                       preview_error=st.session_state.get("preview_error",""),context=fingerprint,
                       auto_preview=auto_preview,preview_stale=fingerprint!=st.session_state.get("preview_fingerprint"),
-                      uploaded_slots=list(uploads),
+                      uploaded_slots=list(uploads),natural_spacing=template_id!="original",
                       key="article_editor",default=None)
     if value:
         incoming = value.get("blocks",[])

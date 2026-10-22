@@ -15,17 +15,38 @@ TEMPLATES = {"original": "Original magazine", "kids": "Children / toys (Blank)",
              "fabric": "Fabric / flowers (Blank 1)", "blue": "Blue geometric (Blank 2)",
              "teal": "Cream / teal (Blank 3)"}
 PROFILES = {
-    "kids": dict(title=[28,60,580,252], color="#202bce", date=[79,38,210,62], number=[289,807,313,833],
-                 regions=[[[25,90,300,445],[25,450,570,796]],
-                          [[25,90,570,468],[300,477,570,790]]]),
+    "kids": dict(title=[28,60,580,252], color="#202bce", date=[76,38,211,67], date_color="#ffffff", number=[289,807,313,833],
+                 regions=[[[25,90,570,796]],[[25,90,570,796]]]),
     "fabric": dict(title=[29,535,566,734], color="#495400", date=[42,34,198,60], number=[283,802,307,823],
-                   regions=[[[27,88,340,415],[40,420,565,710]]]),
+                   regions=[[[27,88,565,795]]]),
     "blue": dict(title=[48,58,554,260], title_align="left", color="#ffffff", date=[38,25,158,49], number=[540,812,559,832],
-                 regions=[[[35,82,333,406],[35,438,565,795]],
-                          [[35,82,565,530],[285,553,565,795]]]),
+                 regions=[[[35,82,565,795]],[[35,82,565,795]]]),
     "teal": dict(title=[30,68,565,260], color="#005c4e", date=[30,41,180,64], number=[282,798,312,820],
-                 regions=[[[30,85,565,168],[30,175,315,420],[30,430,565,790]]]),
+                 regions=[[[30,85,565,790]]]),
 }
+
+# Photo/frame envelopes include overlapping template ornaments (for example the
+# teddy beneath the tilted frame). Flowers remain usable background artwork.
+PHOTO_EXCLUSIONS = {
+    "kids": [[299,115,583,445],[20,477,300,800]],
+    "fabric": [[345,102,575,420]],
+    "blue": [[335,132,568,428],[40,535,280,809]],
+    "teal": [[320,170,558,420]],
+}
+
+def flow_regions(template, variant_index):
+    """One logical page area, with automatic flow around its photo envelope."""
+    profile=PROFILES[template]
+    area=fitz.Rect(profile["regions"][variant_index][0])
+    photo=fitz.Rect(PHOTO_EXCLUSIONS[template][variant_index])
+    above=fitz.Rect(area.x0,area.y0,area.x1,min(area.y1,photo.y0-6))
+    below=fitz.Rect(area.x0,max(area.y0,photo.y1+6),area.x1,area.y1)
+    top,bottom=max(area.y0,photo.y0-6),min(area.y1,photo.y1+6)
+    if (photo.x0+photo.x1)/2 > (area.x0+area.x1)/2:
+        beside=fitz.Rect(area.x0,top,photo.x0-8,bottom)
+    else:
+        beside=fitz.Rect(photo.x1+8,top,area.x1,bottom)
+    return [r for r in (above,beside,below) if r.width>0 and r.height>0]
 
 @lru_cache(maxsize=32)
 def photo_image(template, variant, data, zoom=1., pan_x=0., pan_y=0.):
@@ -51,9 +72,14 @@ def background(output, template, variant, data=None, crop=None):
     return page
 
 def render(api, article, selected, uploads, photo_crops, oval_photos, oval_crops, save, enforce_size, template):
-    """Flow each Story through ordered page regions around fixed photo frames."""
+    """Continue each paragraph around images and onto following pages."""
     profile = PROFILES[template]
     blocks = api["clean_blocks"](article) if article else []
+    for block in blocks:
+        # Old editor states saved justification as a default. Natural spacing
+        # should replace that implicit setting, while deliberate choices remain.
+        if block.get("align")=="justify" and not block.get("align_explicit"):
+            block["align"]="left"
     body, sub = api["font_paths"](); api["ensure_bold_font"](body)
     css = api["story_css"](body,sub)
     blank = not blocks
@@ -86,12 +112,14 @@ def render(api, article, selected, uploads, photo_crops, oval_photos, oval_crops
             header_css = css + "body{font-size:14pt;}p{line-height:19pt;}"
             for text,rect in [(selected.strftime("%d-%m-%Y"),profile["date"]),(str(number),profile["number"])]:
                 color="#ffffff" if template in {"kids","blue"} and text==str(number) else "#0656a3" if template=="blue" else profile["color"]
+                if text!=str(number):
+                    color=profile.get("date_color",color)
                 story = api["make_story"]({"type":"body","runs":[{"text":text,"bold":False,"color":color}]},header_css)
                 api["centered_story"](page,story,fitz.Rect(rect))
             if template=="teal":
                 for start,end in [((190,58),(565,58))]:
                     page.draw_line(start,end,color=(0,.36,.31),width=.6)
-            return page,[fitz.Rect(r) for r in profile["regions"][variant_index]]
+            return page,flow_regions(template,variant_index)
         for block in blocks:
             api["validate_text"](block["text"],sub if block["type"] in {"heading","subheading"} else body)
             # Keep list labels in the shaped text, including wrapped continuations.
@@ -113,7 +141,7 @@ def render(api, article, selected, uploads, photo_crops, oval_photos, oval_crops
                     api["draw_story"](page,story)
                     placements.append(dict(page=len(output)-1,source_index=block["source_index"],type=block["type"],
                         font_size=api["block_font_size"](block),line_height=api["block_line_height"](block),
-                        color=block.get("color"),rect=[region.x0,y,region.x1,min(filled[3],region.y1)],edit_bottom=region.y1))
+                        color=block.get("color"),align=block["align"],rect=[region.x0,y,region.x1,min(filled[3],region.y1)],edit_bottom=region.y1))
                     y=filled[3]+(8 if block["type"] in {"heading","subheading"} else 15.9936)
                     if not more: break
                 elif y<=region.y0+.01 and region_index==len(regions)-1:

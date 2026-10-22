@@ -18,6 +18,8 @@ h3{font-size:14px;margin:8px 0}.pane{min-width:0}
 .hit:hover,.hit:focus{border-color:#20429b;background:#20429b0b}.pending .hit{pointer-events:none}
 .preview-edit{position:absolute;background:#fff;z-index:3;color:#000;outline:2px solid #20429b;padding:0;overflow:auto;font-family:Article;white-space:normal;box-shadow:0 3px 12px #16345722}
 .preview-edit p,.preview-edit div{margin:0}.preview-edit.subheading{color:#20429b}
+#editor.natural-spacing p{text-align:left}
+#editor,.preview-edit{word-spacing:normal;letter-spacing:normal;word-break:normal;overflow-wrap:break-word}
 #generate{background:#20429b;color:white;border:0;padding:10px 20px;margin-left:auto}
 #error{display:none;padding:12px;background:#fff0ef;border:1px solid #edb6b0;border-radius:6px;color:#923a30;margin:8px 0;font-size:14px}
 @media(max-width:850px){.workspace{grid-template-columns:1fr 1fr;gap:10px}#editor{font-size:19px}}
@@ -39,6 +41,8 @@ h3{font-size:14px;margin:8px 0}.pane{min-width:0}
 <script>
 const editor=document.getElementById('editor'),preview=document.getElementById('preview');
 let initialized=false,request=null,refreshRequest=null,autoPreview=true,revision='initial',selection=null,timer=null,active=null,lastPages=[],lastContext=null;
+let naturalSpacing=false;
+function effectiveAlign(item){return naturalSpacing&&item.align==='justify'&&!item.align_explicit?'left':item.align||(naturalSpacing?'left':item.type==='body'?'justify':'left');}
 const send=(type,extra={})=>window.parent.postMessage({isStreamlitMessage:true,type,...extra},'*');
 const uuid=()=>crypto.randomUUID();
 function hexColor(value){
@@ -63,11 +67,12 @@ function blocks(){
   const runs=runsFor(node),text=runs.map(r=>r.text).join('');
   const align=node.nodeType===Node.ELEMENT_NODE?node.style.textAlign||inherited:inherited;
   const style={};
+  if(node.nodeType===Node.ELEMENT_NODE&&node.dataset.alignExplicit==='true')style.align_explicit=true;
   if(node.nodeType===Node.ELEMENT_NODE){
    if(node.dataset.fontSize)style.font_size=Number(node.dataset.fontSize);
    if(node.dataset.textColor)style.color=node.dataset.textColor;
   }
-  if(text.trim())out.push({type,text,runs,number,align:align|| (type==='body'?'justify':'left'),...style});
+  if(text.trim())out.push({type,text,runs,number,align:align|| (type==='body'&&!naturalSpacing?'justify':'left'),...style});
  }
  function visit(node){
   if(node.nodeType===Node.TEXT_NODE){add(node);return;}
@@ -121,13 +126,15 @@ function restore(items){
  editor.replaceChildren();
  for(const item of items||[]){
   let node=document.createElement(item.type==='heading'?'h1':item.type==='subheading'?'h2':'p');
-  node.style.textAlign=item.align||(item.type==='body'?'justify':'left');
+  node.style.textAlign=effectiveAlign(item);
+  if(item.align_explicit)node.dataset.alignExplicit='true';
   if(item.font_size){node.dataset.fontSize=item.font_size;node.style.fontSize=item.font_size+'px';}
   if(item.color){node.dataset.textColor=item.color;node.style.color=item.color;}
   appendRuns(node,item.runs||[{text:item.text||'',bold:false}]);
   if(['bullet','number'].includes(item.type)){
    const list=document.createElement(item.type==='bullet'?'ul':'ol');if(item.type==='number')list.start=item.number||1;
    const li=document.createElement('li');li.style.textAlign=node.style.textAlign;
+   if(item.align_explicit)li.dataset.alignExplicit='true';
    if(item.font_size){li.dataset.fontSize=item.font_size;li.style.fontSize=item.font_size+'px';}
    if(item.color){li.dataset.textColor=item.color;li.style.color=item.color;}
    while(node.firstChild)li.appendChild(node.firstChild);list.appendChild(li);node=list;
@@ -148,6 +155,7 @@ function syncPreview(allowEmpty=false){
  if(!text.trim()&&!allowEmpty)return;
  const items=blocks(),item=items[active.index];if(!item)return;
  item.runs=runs;item.text=text;item.align=active.node.style.textAlign||item.align;
+ if(active.node.dataset.alignExplicit==='true')item.align_explicit=true;
  if(active.node.dataset.fontSize)item.font_size=Number(active.node.dataset.fontSize);
  if(active.node.dataset.textColor)item.color=active.node.dataset.textColor;
  if(active.meta.type==='heading'&&active.meta.page===0)item.type='heading';
@@ -168,7 +176,8 @@ function beginPreviewEdit(meta,stage){
  node.style.maxHeight=((meta.edit_bottom??(meta.page===0?810:539))-y0)/841.92*stage.clientHeight+'px';
  node.style.minHeight=Math.max(35,(y1-y0)*scale)+'px';
  node.style.fontSize=(meta.font_size||(meta.page===0?42:meta.type==='subheading'?24:22))*scale+'px';
- node.style.lineHeight=(meta.line_height||(meta.page===0?(meta.font_size||42)*60/42:35.001))*scale+'px';node.style.textAlign=meta.page===0?(meta.align||'center'):item.align||'left';
+ node.style.lineHeight=(meta.line_height||(meta.page===0?(meta.font_size||42)*60/42:35.001))*scale+'px';node.style.textAlign=meta.page===0?(meta.align||'center'):meta.align||effectiveAlign(item);
+ if(item.align_explicit)node.dataset.alignExplicit='true';
  if(item.font_size)node.dataset.fontSize=item.font_size;
  if(item.color){node.dataset.textColor=item.color;node.style.color=item.color;}
  appendRuns(node,item.runs||[{text:item.text,bold:false}]);stage.appendChild(node);
@@ -246,8 +255,8 @@ document.querySelectorAll('[data-command]').forEach(button=>{
   if(selection){const s=window.getSelection();s.removeAllRanges();s.addRange(selection);}
   const cmd=button.dataset.command;
   if(['left','center','justify'].includes(cmd)){
-   if(active)active.node.style.textAlign=cmd;
-   else document.execCommand({left:'justifyLeft',center:'justifyCenter',justify:'justifyFull'}[cmd]);
+   if(active){active.node.style.textAlign=cmd;active.node.dataset.alignExplicit='true';}
+   else{document.execCommand({left:'justifyLeft',center:'justifyCenter',justify:'justifyFull'}[cmd]);for(const node of styleTargets())node.dataset.alignExplicit='true';}
   }
   if(cmd==='break')document.execCommand('insertLineBreak');
   if(cmd==='bold')document.execCommand('bold');
@@ -302,6 +311,9 @@ document.getElementById('refresh-preview').addEventListener('click',()=>{
 window.addEventListener('message',event=>{
  if(event.source!==window.parent||event.data.type!=='streamlit:render')return;
  const args=event.data.args;
+ const spacingChanged=naturalSpacing!==(args.natural_spacing===true);
+ naturalSpacing=args.natural_spacing===true;editor.classList.toggle('natural-spacing',naturalSpacing);
+ if(initialized&&spacingChanged&&!active)restore(blocks());
  autoPreview=args.auto_preview!==false;
  window.uploadedSlots=args.uploaded_slots||[];
  if(!initialized){
